@@ -1,0 +1,80 @@
+.status-panel {
+  background: white;
+  border-radius: 20px;
+  padding: 40px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  height: 100%;
+}
+
+.status-panel h2 {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 30px;
+  color: #1a1a1a;
+}
+
+.status-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.status-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 15px;
+  color: #4a5568;
+  line-height: 1.6;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-dot.status-running {
+  background: #10b981;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
+}
+
+.status-dot.status-warning {
+  background: #f59e0b;
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.4);
+}
+
+.status-dot.status-stopped {
+  background: #ef4444;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.4);
+}
+
+.status-dot.status-unavailable {
+  background: #94a3b8;
+}
+
+.status-dot.status-not-configured {
+  background: #f59e0b;
+}
+
+.status-dot.status-unknown {
+  background: #cbd5e1;
+}
+
+.status-label {
+  flex: 1;
+  color: #475569;
+}
+
+.status-value {
+  font-size: 13px;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.status-divider {
+  height: 1px;
+  background: #e2e8f0;
+  margin: 4px 0;
+}

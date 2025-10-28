@@ -1,0 +1,35 @@
+services:
+  orin-monitor:
+    build:
+      context: .
+      network: host
+    image: orin-system-monitor:latest
+    container_name: orin-system-monitor
+    network_mode: host
+    privileged: true
+    restart: unless-stopped
+    
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PORT=3000
+      - WIFI_INTERFACE=wlP1p1s0
+    
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/run/dbus:/var/run/dbus
+      - /etc/NetworkManager:/etc/NetworkManager:ro
+      - ./logs:/app/logs
+    
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    
+    labels:
+      - "com.orin.service=system-monitor"
+      - "com.orin.description=Orin System Monitor Dashboard"
+    
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
