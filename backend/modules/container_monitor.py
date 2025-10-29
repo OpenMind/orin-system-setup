@@ -1,14 +1,10 @@
-"""Container Monitor Module
-
-Monitors multiple Docker containers and their services.
-"""
 import subprocess
 import requests
 from typing import Dict, List, Optional
 
 
 class ContainerMonitor:
-    """Monitors Docker containers and their health status."""
+    """Monitors Docker containers """
     
     def __init__(self, stream_monitor=None):
         """Initialize container monitor with container definitions."""
@@ -17,46 +13,79 @@ class ContainerMonitor:
             'video_processor': {
                 'name': 'om1_video_processor',
                 'display_name': 'Video Processor',
-                'description': 'Video/Audio processing and face recognition',
-                'health_check': None
+                'description': 'Video/Audio processing and face recognition'
             },
             'ros2_sensor': {
                 'name': 'om1_sensor',
                 'display_name': 'ROS2 Sensor',
-                'description': 'Robot sensors and camera streams',
-                'health_check': None
+                'description': 'Robot sensors and camera streams'
             },
             'orchestrator': {
                 'name': 'orchestrator',
                 'display_name': 'Orchestrator',
                 'description': 'Navigation, SLAM and charging controller',
-                'health_check': 'http://localhost:5000/status'
-            },
-            'zenoh_bridge': {
-                'name': 'zenoh_bridge',
-                'display_name': 'Zenoh Bridge',
-                'description': 'ROS2 DDS communication bridge',
-                'health_check': None
-            },
-            'watchdog': {
-                'name': 'watchdog',
-                'display_name': 'Watchdog',
-                'description': 'Sensor monitoring service',
-                'health_check': None
+                'api_endpoint': 'http://localhost:5000/status'
             }
         }
     
+    def find_container_name(self, name_pattern: str) -> Optional[str]:
+        """
+        Find the container using docker ps.
+            
+        Returns:
+            Actual container name if found, None otherwise
+        """
+        try:
+            result = subprocess.run(
+                ["docker", "ps", "--filter", f"name={name_pattern}", 
+                 "--format", "{{.Names}}"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            
+            # if not found, container status might be stopped, try ps -a
+            if result.returncode != 0 or not result.stdout.strip():
+                result = subprocess.run(
+                    ["docker", "ps", "-a", "--filter", f"name={name_pattern}", 
+                     "--format", "{{.Names}}"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+            
+            if result.returncode != 0 or not result.stdout.strip():
+                return None
+            
+            # Get all names
+            container_names = [name.strip() for name in result.stdout.strip().split('\n') if name.strip()]
+            
+            if not container_names:
+                return None
+            
+            for name in container_names:
+                if name == name_pattern:
+                    return name
+            
+            matching = [n for n in container_names if name_pattern in n]
+            if matching:
+                return min(matching, key=len)
+            
+            return None
+            
+        except Exception as e:
+            print(f"Error finding container {name_pattern}: {str(e)}")
+            return None
+    
     def get_container_status(self, container_name: str) -> Dict:
         """
-        Get the status of a specific container
+        Get the status of the container 
         
-        Returns:
-            Dict with container status information
         """
         try:
             result = subprocess.run(
                 ["docker", "inspect", container_name, 
-                 "--format", "{{.State.Status}}|{{.State.Running}}|{{.State.Health.Status}}"],
+                 "--format", "{{.State.Status}}|{{.State.Running}}"],
                 capture_output=True,
                 text=True,
                 timeout=5
@@ -65,28 +94,32 @@ class ContainerMonitor:
             if result.returncode != 0:
                 return {
                     'running': False,
-                    'status': 'not_found',
-                    'health': 'unknown'
+                    'status': 'not_found'
                 }
             
-            status, running, health = result.stdout.strip().split('|')
+            parts = result.stdout.strip().split('|')
+            if len(parts) < 2:
+                return {
+                    'running': False,
+                    'status': 'error',
+                    'error': 'Invalid docker inspect output'
+                }
+            
+            status, running = parts[0], parts[1]
             
             return {
                 'running': running.lower() == 'true',
-                'status': status,
-                'health': health if health else 'none'
+                'status': status
             }
             
         except Exception as e:
             return {
                 'running': False,
                 'status': 'error',
-                'health': 'unknown',
                 'error': str(e)
             }
     
     def get_container_uptime(self, container_name: str) -> Optional[str]:
-        """Get container uptime."""
         try:
             result = subprocess.run(
                 ["docker", "inspect", container_name,
@@ -104,7 +137,7 @@ class ContainerMonitor:
             return None
     
     def check_http_health(self, url: str) -> Dict:
-        """Check HTTP endpoint health."""
+        """Check HTTP endpoint."""
         try:
             response = requests.get(url, timeout=3)
             if response.status_code == 200:
@@ -142,7 +175,7 @@ class ContainerMonitor:
             }
     
     def get_ros2_camera_streams(self) -> Dict:
-        """Get ROS2 camera stream status (front and down cameras) with actual RTSP check."""
+        """Get local RTSP check."""
         streams = {}
         
         for camera_name in ['front_camera', 'down_camera']:
@@ -155,7 +188,6 @@ class ContainerMonitor:
                 'streaming': False
             }
             
-            # Check actual RTSP stream status if StreamMonitor is available
             if self.stream_monitor:
                 rtsp_status = self.stream_monitor.check_local_rtsp_stream(camera_name)
                 stream_info['streaming'] = rtsp_status.get('streaming', False)
@@ -168,7 +200,7 @@ class ContainerMonitor:
         return streams
     
     def get_orchestrator_services(self) -> Optional[Dict]:
-        """Get orchestrator service status from its API."""
+        """Get orchestrator local API."""
         health = self.check_http_health('http://localhost:5000/status')
         
         if health.get('healthy') and 'data' in health:
@@ -189,12 +221,7 @@ class ContainerMonitor:
         return None
     
     def get_all_containers_status(self) -> Dict:
-        """
-        Get comprehensive status of all monitored containers
-        
-        Returns:
-            Dict with all container groups and their statuses in list format
-        """
+        """ Get status of all monitored containers. """
         result = {
             'video_processor': {
                 'display_name': 'Video Processor',
@@ -221,18 +248,15 @@ class ContainerMonitor:
             container_running_status = self.stream_monitor.get_container_status()
             result['video_processor']['container_status'] = {
                 'running': container_running_status.get('running', False),
-                'status': 'running' if container_running_status.get('running') else 'stopped',
-                'health': 'none'
+                'status': 'running' if container_running_status.get('running') else 'stopped'
             }
             all_streams = self.stream_monitor.get_all_streams_status()
         else:
             result['video_processor']['container_status'] = self.get_container_status('om1_video_processor')
             all_streams = {}
         
-        # Get all streams if StreamMonitor is available
         if all_streams:
             
-            # Video Processor - Local Streams
             if 'audio' in all_streams:
                 result['video_processor']['local_streams'].append({
                     'name': 'Audio (Mic Local)',
@@ -247,7 +271,6 @@ class ContainerMonitor:
                     'type': 'video'
                 })
             
-            # Video Processor - Cloud Streams
             if 'audio_cloud' in all_streams:
                 result['video_processor']['cloud_streams'].append({
                     'name': 'Audio Cloud',
@@ -274,7 +297,6 @@ class ContainerMonitor:
                 'streaming': stream_data.get('streaming', False)
             })
             
-            # Also add to Video Processor cloud streams for cloud forwarding
             result['video_processor']['cloud_streams'].append({
                 'name': f"{stream_data['name']} Cloud",
                 'status': stream_data.get('status', 'unknown'),

@@ -285,7 +285,7 @@ class StreamMonitor:
                         rtsp_status = self.check_local_rtsp_stream(stream_info['rtsp_path'])
                         base_status['rtsp_streaming'] = rtsp_status.get('streaming', False)
                         if not rtsp_status.get('streaming'):
-                            # If process running but stream not available, mark as error
+                            # If process running but stream not available
                             base_status['status'] = 'running_no_stream'
                             base_status['stream_error'] = rtsp_status.get('error', 'Stream not available')
                 
