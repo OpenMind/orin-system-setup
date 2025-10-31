@@ -1,0 +1,19 @@
+[Unit]
+Description=OM1 Hotspot Monitor Service
+After=network-online.target NetworkManager.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/om1-monitor.sh
+StandardOutput=journal
+StandardError=journal
+Environment="WIFI_INTERFACE=wlP1p1s0"
+
+# Restart on failure
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target

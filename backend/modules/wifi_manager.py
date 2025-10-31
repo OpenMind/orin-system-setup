@@ -1,10 +1,12 @@
 import subprocess
-import re
-from typing import List, Dict, Optional
+import time
+import threading
+import logging
+from typing import Dict, Optional
 
 
 class WiFiManager:    
-    NMCLI = "/usr/bin/nmcli"  # Fixed path to avoid version conflicts
+    NMCLI = "/usr/bin/nmcli"
     
     def __init__(self, interface_name: str = "wlP1p1s0"):
         self.interface_name = interface_name
@@ -17,8 +19,9 @@ class WiFiManager:
             Dict with connection details
         """
         try:
+            cmd = [self.NMCLI, "-t", "-f", "DEVICE,STATE,CONNECTION", "device", "status"]
             result = subprocess.run(
-                [self.NMCLI, "-t", "-f", "DEVICE,STATE,CONNECTION", "device", "status"],
+                cmd,
                 capture_output=True,
                 text=True,
                 timeout=5
@@ -44,18 +47,27 @@ class WiFiManager:
                         return {
                             'connected': is_connected,
                             'ssid': connection if is_connected and connection != '--' else None,
-                            'interface': device,
+                            'interface': self.interface_name,
                             'state': state
                         }
             
+            # Interface not found
             return {
                 'connected': False,
                 'ssid': None,
                 'interface': self.interface_name,
-                'state': 'unknown'
+                'state': 'not found'
             }
             
+        except subprocess.TimeoutExpired:
+            return {
+                'connected': False,
+                'ssid': None,
+                'interface': self.interface_name,
+                'error': 'Command timeout'
+            }
         except Exception as e:
+            logging.error(f"Error getting connection status: {e}")
             return {
                 'connected': False,
                 'ssid': None,
@@ -63,83 +75,146 @@ class WiFiManager:
                 'error': str(e)
             }
     
-    def scan_networks(self) -> List[Dict]:
+    def connect_wifi_async(self, ssid: str, password: str = '') -> Dict:
         """
-        Scan for available WiFi networks
+        Connect to WiFi network asynchronously with hotspot management
+        
+        Args:
+            ssid: Network SSID
+            password: Network password (optional)
         
         Returns:
-            List of network dictionaries
+            Dict with connection status and instructions
         """
-        networks = []
-        
         try:
-            # Request rescan
-            subprocess.run(
-                [self.NMCLI, "device", "wifi", "rescan"],
-                capture_output=True,
-                timeout=10
+            # Start connection in background thread
+            thread = threading.Thread(
+                target=self._connect_wifi_direct_task,
+                args=(ssid, password),
+                daemon=True
             )
+            thread.start()
             
-            # Get network list
+            return {
+                'status': 'connecting',
+                'message': f'Connecting to {ssid}...',
+                'instructions': [
+                    'Hotspot will close automatically',
+                    'Your device will be disconnected',
+                    'Check your device WiFi list for connection status',
+                    'If connection fails, hotspot will restart after 1 minute'
+                ]
+            }
+            
+        except Exception as e:
+            logging.error(f"Error starting WiFi connection: {e}")
+            return {
+                'status': 'error',
+                'message': f'Connection error: {str(e)}'
+            }
+    
+    def disconnect(self) -> Dict:
+        """Disconnect from current WiFi connection"""
+        try:
+            # Get active connection name
+            cmd = [self.NMCLI, "-t", "-f", "NAME,TYPE,DEVICE", "connection", "show", "--active"]
             result = subprocess.run(
-                [self.NMCLI, "-t", "-f", "SSID,SIGNAL,SECURITY,IN-USE", "device", "wifi", "list", "ifname", self.interface_name],
+                cmd,
                 capture_output=True,
                 text=True,
                 timeout=10
             )
             
-            if result.returncode != 0:
-                return networks
+            if result.returncode == 0:
+                for line in result.stdout.strip().split('\n'):
+                    if self.interface_name in line and "802-11-wireless" in line:
+                        conn_name = line.split(':')[0]
+                        if conn_name and conn_name != "OM1-Hotspot":
+                            # Disconnect from this connection
+                            disconnect_cmd = [self.NMCLI, "connection", "down", conn_name]
+                            subprocess.run(disconnect_cmd, capture_output=True, timeout=10)
+                            return {'success': True, 'message': f'Disconnected from {conn_name}'}
             
-            seen_ssids = set()
-            
-            for line in result.stdout.strip().split('\n'):
-                parts = line.split(':')
-                if len(parts) >= 4:
-                    ssid = parts[0].strip()
-                    signal = parts[1].strip()
-                    security = parts[2].strip()
-                    in_use = parts[3].strip()
-                    
-                    # Skip empty SSIDs and duplicates
-                    if not ssid or ssid in seen_ssids:
-                        continue
-                    
-                    seen_ssids.add(ssid)
-                    
-                    try:
-                        signal_strength = int(signal) if signal.isdigit() else 0
-                    except:
-                        signal_strength = 0
-                    
-                    networks.append({
-                        'ssid': ssid,
-                        'signal': signal_strength,
-                        'security': security if security else 'Open',
-                        'connected': in_use == '*'
-                    })
-            
-            # Sort by signal strength
-            networks.sort(key=lambda x: x['signal'], reverse=True)
+            return {'success': True, 'message': 'No WiFi connection to disconnect'}
             
         except Exception as e:
-            print(f"WiFi scan error: {e}")
-        
-        return networks
+            logging.error(f"Error disconnecting WiFi: {e}")
+            return {'success': False, 'message': f'Disconnect error: {str(e)}'}
     
-    def connect(self, ssid: str, password: str = '') -> Dict:
-        """
-        Connect to a WiFi network
-        
-        Args:
-            ssid: Network SSID
-            password: Network password (optional for open networks)
-        
-        Returns:
-            Dict with status and message
-        """
+    def stop_hotspot(self) -> Dict:
+        """Stop the hotspot connection"""
         try:
-            cmd = [self.NMCLI, "device", "wifi", "connect", ssid, "ifname", self.interface_name]
+            result = subprocess.run(
+                [self.NMCLI, "connection", "down", "OM1-Hotspot"],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            
+            if result.returncode == 0:
+                return {'success': True, 'message': 'Hotspot stopped'}
+            else:
+                logging.warning(f"Failed to stop hotspot: {result.stderr}")
+                return {'success': False, 'message': 'Failed to stop hotspot', 'error': result.stderr}
+                
+        except Exception as e:
+            logging.error(f"Error stopping hotspot: {e}")
+            return {'success': False, 'message': f'Error: {str(e)}'}
+    
+    def start_hotspot(self) -> Dict:
+        """Start the hotspot connection"""
+        try:
+            result = subprocess.run(
+                [self.NMCLI, "connection", "up", "OM1-Hotspot"],
+                capture_output=True,
+                text=True,
+                timeout=15
+            )
+            
+            if result.returncode == 0:
+                return {'success': True, 'message': 'Hotspot started'}
+            else:
+                logging.warning(f"Failed to start hotspot: {result.stderr}")
+                return {'success': False, 'message': 'Failed to start hotspot', 'error': result.stderr}
+                
+        except Exception as e:
+            logging.error(f"Error starting hotspot: {e}")
+            return {'success': False, 'message': f'Error: {str(e)}'}
+    
+    def delete_connection(self, ssid: str) -> Dict:
+        """Delete a WiFi connection profile"""
+        try:
+            result = subprocess.run(
+                [self.NMCLI, "connection", "delete", ssid],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            
+            if result.returncode == 0:
+                return {'success': True, 'message': f'Connection {ssid} deleted'}
+            else:
+                return {'success': False, 'message': f'Failed to delete connection', 'error': result.stderr}
+                
+        except Exception as e:
+            logging.error(f"Error deleting connection: {e}")
+            return {'success': False, 'message': f'Error: {str(e)}'}
+    
+    def _connect_wifi_direct_task(self, ssid: str, password: str):
+        """Background task to connect to WiFi using direct device method"""
+        try:
+            # Wait 5 seconds to let user see the response
+            time.sleep(5)
+            
+            # Step 1: Stop hotspot
+            self.stop_hotspot()
+            
+            # Wait for hotspot to fully stop and interface to stabilize
+            time.sleep(5)
+            
+            # Step 2: Direct device connect (bypasses connection add)
+            cmd = [self.NMCLI, "device", "wifi", "connect", ssid]
+            
             if password:
                 cmd.extend(["password", password])
             
@@ -150,59 +225,32 @@ class WiFiManager:
                 timeout=30
             )
             
-            if result.returncode == 0:
-                return {
-                    'success': True,
-                    'message': f'Connected to {ssid}',
-                    'ssid': ssid
-                }
-            else:
-                return {
-                    'success': False,
-                    'message': f'Failed to connect to {ssid}',
-                    'error': result.stderr
-                }
+            if result.returncode != 0:
+                logging.error(f"Direct connection failed: {result.stderr}")
+                # Connection failed, restart hotspot
+                self._handle_connection_failure(ssid)
                 
-        except subprocess.TimeoutExpired:
-            return {
-                'success': False,
-                'message': f'Connection timeout for {ssid}'
-            }
         except Exception as e:
-            return {
-                'success': False,
-                'message': f'Connection error: {str(e)}'
-            }
+            logging.error(f"Direct WiFi connection task error: {e}")
+            self._handle_connection_failure(ssid)
     
-    def disconnect(self) -> Dict:
-        """
-        Disconnect from current WiFi network
-        
-        Returns:
-            Dict with status and message
-        """
+    def _handle_connection_failure(self, ssid: str):
+        """Handle WiFi connection failure"""
         try:
-            result = subprocess.run(
-                [self.NMCLI, "device", "disconnect", self.interface_name],
-                capture_output=True,
-                text=True,
-                timeout=10
-            )
+            # Wait a bit to ensure connection attempt is fully failed
+            time.sleep(5)
             
-            if result.returncode == 0:
-                return {
-                    'success': True,
-                    'message': f'Disconnected from WiFi'
-                }
-            else:
-                return {
-                    'success': False,
-                    'message': 'Failed to disconnect',
-                    'error': result.stderr
-                }
+            # Try to delete the failed connection
+            self.delete_connection(ssid)
+            
+            # Wait before restarting hotspot
+            time.sleep(5)
+            
+            # Restart hotspot
+            result = self.start_hotspot()
+            
+            if not result.get('success'):
+                logging.error("Failed to restart hotspot after connection failure")
                 
         except Exception as e:
-            return {
-                'success': False,
-                'message': f'Disconnect error: {str(e)}'
-            }
+            logging.error(f"Error handling connection failure: {e}")

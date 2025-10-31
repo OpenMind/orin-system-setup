@@ -1,19 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Wifi, WifiOff, RefreshCw, Loader } from 'lucide-react';
+import { Wifi, WifiOff, Loader, AlertCircle } from 'lucide-react';
 
 const API_BASE = '/api';
 
 function WiFiStatus() {
   const [wifiStatus, setWifiStatus] = useState(null);
-  const [networks, setNetworks] = useState([]);
   const [initialLoading, setInitialLoading] = useState(true);
-  const [loading, setLoading] = useState(false);
-  const [scanning, setScanning] = useState(false);
-  const [showNetworkList, setShowNetworkList] = useState(false);
+  const [showConnectForm, setShowConnectForm] = useState(false);
   const [connecting, setConnecting] = useState(false);
-  const [selectedNetwork, setSelectedNetwork] = useState(null);
+  const [ssid, setSsid] = useState('');
   const [password, setPassword] = useState('');
+  const [connectionResult, setConnectionResult] = useState(null);
 
   // Fetch WiFi status
   const fetchWiFiStatus = async () => {
@@ -29,44 +27,53 @@ function WiFiStatus() {
     }
   };
 
-  // Scan for networks
-  const scanNetworks = async () => {
-    setScanning(true);
-    try {
-      const response = await axios.get(`${API_BASE}/wifi/networks`);
-      if (response.data.success) {
-        setNetworks(response.data.data);
-        setShowNetworkList(true);
-      }
-    } catch (error) {
-      console.error('Failed to scan networks:', error);
-    } finally {
-      setScanning(false);
-    }
+  const resetForm = () => {
+    setSsid('');
+    setPassword('');
+    setShowConnectForm(false);
+    setConnectionResult(null);
   };
 
-  // Connect to network
   const connectToNetwork = async () => {
-    if (!selectedNetwork) return;
+    if (!ssid.trim()) {
+      setConnectionResult({
+        success: false,
+        message: 'Please enter a WiFi network name'
+      });
+      return;
+    }
     
     setConnecting(true);
+    setConnectionResult(null);
+    
     try {
       const response = await axios.post(`${API_BASE}/wifi/connect`, {
-        ssid: selectedNetwork.ssid,
+        ssid: ssid.trim(),
         password: password
       });
       
-      if (response.data.success) {
-        setSelectedNetwork(null);
-        setPassword('');
-        setShowNetworkList(false);
-        await fetchWiFiStatus();
+      // Response from async connection
+      if (response.data.status === 'connecting') {
+        setConnectionResult({
+          success: true,
+          message: `Connecting to ${ssid.trim()}...`,
+          instructions: ['This will take 15-20 seconds', 'Your device will disconnect from hotspot']
+        });
+        
+        // Reset form after showing result
+        setTimeout(resetForm, 8000);
       } else {
-        alert(response.data.message || 'Failed to connect');
+        setConnectionResult({
+          success: false,
+          message: response.data.error || 'Connection failed'
+        });
       }
     } catch (error) {
       console.error('Connection failed:', error);
-      alert('Failed to connect to network');
+      setConnectionResult({
+        success: false,
+        message: error.response?.data?.error || 'Network error - please try again'
+      });
     } finally {
       setConnecting(false);
     }
@@ -78,13 +85,6 @@ function WiFiStatus() {
     const interval = setInterval(fetchWiFiStatus, 5000);
     return () => clearInterval(interval);
   }, []);
-
-  const getSignalIcon = (signal) => {
-    if (signal >= 75) return '▂▄▆█';
-    if (signal >= 50) return '▂▄▆';
-    if (signal >= 25) return '▂▄';
-    return '▂';
-  };
 
   if (initialLoading) {
     return (
@@ -105,107 +105,143 @@ function WiFiStatus() {
 
   return (
     <div className="bg-white rounded-2xl p-8 shadow-sm flex flex-col gap-5">
+      {/* Header */}
       <div className="flex justify-between items-center pb-5 border-b border-gray-200">
         <div className="flex items-center gap-4">
           {wifiStatus?.connected ? (
             <Wifi className="text-green-500" size={24} />
           ) : (
-            <WifiOff className="text-red-500" size={24} />
+            <WifiOff className="text-orange-500" size={24} />
           )}
           <div>
-            <div className="text-sm text-slate-600 mb-1">WiFi status</div>
+            <div className="text-sm text-slate-600 mb-1">WiFi Status</div>
             <div className="text-base font-semibold text-slate-800">
-              {wifiStatus?.connected ? wifiStatus.ssid : 'Not connected'}
+              {wifiStatus?.connected ? wifiStatus.ssid : 'Hotspot Mode'}
             </div>
           </div>
         </div>
-        <button 
-          className="px-5 py-2.5 bg-blue-500 text-white border-none rounded-lg font-medium text-sm cursor-pointer transition-all hover:bg-blue-600 disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2" 
-          onClick={scanNetworks}
-          disabled={scanning}
-        >
-          {scanning && <Loader className="animate-spin" size={16} />}
-          Change WIFI
-        </button>
+        {!showConnectForm && !connectionResult && (
+          <button 
+            className="px-5 py-2.5 bg-blue-500 text-white border-none rounded-lg font-medium text-sm cursor-pointer transition-all hover:bg-blue-600 flex items-center gap-2" 
+            onClick={() => setShowConnectForm(true)}
+          >
+            Connect WiFi
+          </button>
+        )}
       </div>
 
-      {showNetworkList && (
-        <div className="flex flex-col gap-4">
-          <div className="flex justify-between items-center">
-            <h3 className="text-base font-semibold text-slate-800">Available Networks</h3>
-            <button 
-              className="p-2 bg-transparent border-none rounded-lg cursor-pointer transition-colors hover:bg-slate-100 disabled:opacity-60 disabled:cursor-not-allowed" 
-              onClick={scanNetworks}
-              disabled={scanning}
-            >
-              <RefreshCw className={scanning ? 'animate-spin' : ''} size={16} />
-            </button>
+      {/* Info Banner */}
+      {!wifiStatus?.connected && !showConnectForm && !connectionResult && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="text-blue-600 flex-shrink-0 mt-0.5" size={20} />
+            <div className="text-sm text-blue-800">
+              <p className="font-medium">You are connected to the setup hotspot</p>
+              <p className="text-blue-700 mt-1">Click "Connect WiFi" to connect this device to a WiFi network.</p>
+            </div>
           </div>
+        </div>
+      )}
 
-          {networks.length === 0 ? (
-            <div className="py-10 text-center text-slate-400 text-sm">
-              {scanning ? 'Scanning...' : 'No networks found'}
+      {/* Connection Form */}
+      {showConnectForm && !connectionResult && (
+        <div className="flex flex-col gap-4">
+          <h3 className="text-base font-semibold text-slate-800">Connect to WiFi Network</h3>
+          
+          <div className="flex flex-col gap-3">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Network Name <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                className="w-full px-4 py-3 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="WiFi network name"
+                value={ssid}
+                onChange={(e) => setSsid(e.target.value)}
+                autoFocus
+              />
             </div>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {networks.map((network, index) => (
-                <div 
-                  key={index}
-                  className={`p-4 border rounded-lg cursor-pointer transition-all ${
-                    network.connected ? 'bg-green-50 border-green-200' : 
-                    selectedNetwork?.ssid === network.ssid ? 'bg-blue-50 border-blue-300' : 
-                    'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
-                  }`}
-                  onClick={() => setSelectedNetwork(network)}
-                >
-                  <div className="flex justify-between items-center">
-                    <div className="flex-1">
-                      <div className="font-medium text-slate-800 mb-1">{network.ssid}</div>
-                      <div className="flex items-center gap-2 text-xs text-slate-500">
-                        <span>{getSignalIcon(network.signal)}</span>
-                        <span>{network.security}</span>
-                      </div>
-                    </div>
-                    {network.connected && (
-                      <span className="px-2.5 py-1 bg-green-500 text-white rounded text-xs font-medium">Connected</span>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
 
-          {selectedNetwork && !selectedNetwork.connected && (
-            <div className="flex flex-col gap-3 pt-4 border-t border-slate-200">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Password
+              </label>
               <input
                 type="password"
                 className="w-full px-4 py-3 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder={`Password for ${selectedNetwork.ssid}`}
+                placeholder="WiFi password (optional for open networks)"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && connectToNetwork()}
               />
-              <div className="flex gap-2">
-                <button 
-                  className="flex-1 px-4 py-2.5 bg-slate-100 text-slate-700 border-none rounded-lg font-medium text-sm cursor-pointer transition-colors hover:bg-slate-200"
-                  onClick={() => {
-                    setSelectedNetwork(null);
-                    setPassword('');
-                  }}
-                >
-                  Cancel
-                </button>
-                <button 
-                  className="flex-1 px-4 py-2.5 bg-green-600 text-white border-none rounded-lg font-medium text-sm cursor-pointer transition-colors hover:bg-green-700 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                  onClick={connectToNetwork}
-                  disabled={connecting}
-                >
-                  {connecting && <Loader className="animate-spin" size={16} />}
-                  {connecting ? 'Connecting...' : 'Connect'}
-                </button>
-              </div>
             </div>
-          )}
+
+            <div className="flex gap-2 mt-2">
+              <button 
+                className="flex-1 px-4 py-2.5 bg-slate-100 text-slate-700 border-none rounded-lg font-medium text-sm cursor-pointer transition-colors hover:bg-slate-200"
+                onClick={resetForm}
+                disabled={connecting}
+              >
+                Cancel
+              </button>
+              <button 
+                className="flex-1 px-4 py-2.5 bg-green-600 text-white border-none rounded-lg font-medium text-sm cursor-pointer transition-colors hover:bg-green-700 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                onClick={connectToNetwork}
+                disabled={connecting || !ssid.trim()}
+              >
+                {connecting && <Loader className="animate-spin" size={16} />}
+                {connecting ? 'Connecting...' : 'Connect'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Connection Result */}
+      {connectionResult && (
+        <div className={`rounded-lg p-5 ${connectionResult.success ? 'bg-blue-50 border border-blue-200' : 'bg-red-50 border border-red-200'}`}>
+          <div className="flex items-start gap-3">
+            {connectionResult.success ? (
+              <Loader className="text-blue-600 flex-shrink-0 mt-0.5 animate-spin" size={24} />
+            ) : (
+              <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={24} />
+            )}
+            <div className="flex-1">
+              <h4 className={`font-semibold mb-2 ${connectionResult.success ? 'text-blue-800' : 'text-red-800'}`}>
+                {connectionResult.message}
+              </h4>
+              {connectionResult.success && connectionResult.instructions && (
+                <ul className="text-sm text-blue-700 space-y-1">
+                  {connectionResult.instructions.map((instruction, index) => (
+                    <li key={index} className="flex items-start gap-2">
+                      <span className="text-blue-500 mt-0.5">•</span>
+                      <span>{instruction}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {!connectionResult.success && (
+                <div className="flex gap-2 mt-3">
+                  <button
+                    className="px-4 py-2 bg-red-600 text-white border-none rounded-lg font-medium text-sm cursor-pointer transition-colors hover:bg-red-700"
+                    onClick={() => {
+                      setConnectionResult(null);
+                      setShowConnectForm(true);
+                    }}
+                  >
+                    Try Again
+                  </button>
+                  <button
+                    className="px-4 py-2 bg-slate-100 text-slate-700 border-none rounded-lg font-medium text-sm cursor-pointer transition-colors hover:bg-slate-200"
+                    onClick={resetForm}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

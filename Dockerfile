@@ -1,4 +1,4 @@
-FROM node:18-alpine as frontend-build
+FROM node:18-alpine AS frontend-build
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm install
@@ -7,8 +7,12 @@ RUN npm run build
 
 FROM python:3.11-slim
 
+# Set library path for ARM64
+ENV LD_LIBRARY_PATH=/usr/lib/aarch64-linux-gnu
+
 RUN apt-get update && apt-get install -y \
     network-manager \
+    libnm-dev \
     curl \
     docker.io \
     ffmpeg \

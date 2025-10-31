@@ -1,6 +1,8 @@
 import subprocess
+import json
+import logging
 import requests
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 
 class ContainerMonitor:
@@ -74,7 +76,7 @@ class ContainerMonitor:
             return None
             
         except Exception as e:
-            print(f"Error finding container {name_pattern}: {str(e)}")
+            logging.error(f"Error finding container {name_pattern}: {str(e)}")
             return None
     
     def get_container_status(self, container_name: str) -> Dict:

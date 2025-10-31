@@ -1,5 +1,6 @@
 services:
   orin-monitor:
+    platform: linux/arm64
     build:
       context: .
       network: host
@@ -11,13 +12,14 @@ services:
     
     environment:
       - PYTHONUNBUFFERED=1
-      - PORT=3000
+      - PORT=80 #default port, aviod typing
       - WIFI_INTERFACE=wlP1p1s0
     
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/run/dbus:/var/run/dbus
       - /etc/NetworkManager:/etc/NetworkManager:ro
+      - /usr/bin/nmcli:/usr/bin/nmcli:ro
       - ./logs:/app/logs
     
     cap_add:

@@ -38,35 +38,37 @@ def get_wifi_status():
         }), 500
 
 
-@app.route('/api/wifi/networks', methods=['GET'])
-def get_wifi_networks():
-    try:
-        networks = wifi_manager.scan_networks()
-        return jsonify({
-            'success': True,
-            'data': networks
-        })
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
-
 @app.route('/api/wifi/connect', methods=['POST'])
 def connect_wifi():
+    """
+    Connect to WiFi with async hotspot management
+    
+    POST body:
+    {
+        "ssid": "WiFi-Name",
+        "password": "wifi-password"
+    }
+    """
     try:
         data = request.get_json()
         ssid = data.get('ssid')
         password = data.get('password', '')
         
+        # Validate input
         if not ssid:
             return jsonify({
                 'success': False,
                 'error': 'SSID is required'
             }), 400
         
-        result = wifi_manager.connect(ssid, password)
+        if not ssid.strip():
+            return jsonify({
+                'success': False,
+                'error': 'SSID cannot be empty'
+            }), 400
+        
+        # Use async connection with hotspot management
+        result = wifi_manager.connect_wifi_async(ssid.strip(), password)
         return jsonify(result)
         
     except Exception as e:
@@ -164,6 +166,4 @@ def serve_react(path):
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 3000))
-    print(f"Starting Orin System Monitor on port {port}...")
-    print(f"Access the dashboard at http://localhost:{port}")
     app.run(host='0.0.0.0', port=port, debug=False)
