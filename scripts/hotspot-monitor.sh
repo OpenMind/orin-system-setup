@@ -22,7 +22,7 @@ log_error() {
 # Check if WiFi connected 
 check_internet_connectivity() {
     local wifi_device_state
-    wifi_device_state=$(nmcli -t -f DEVICE,STATE device show | grep "${WIFI_INTERFACE}:connected" || true)
+    wifi_device_state=$(nmcli -t -f DEVICE,STATE device status | grep "${WIFI_INTERFACE}:connected" || true)
     
     if [[ -n "$wifi_device_state" ]]; then
         local active_connection
