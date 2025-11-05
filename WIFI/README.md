@@ -54,7 +54,7 @@ Python Flask application providing REST APIs for:
 ### Frontend
 
 React-based web dashboard accessible via:
-- http://om1-setup
+- http://$NETWORK_NAME.local
 
 or
 
@@ -79,7 +79,7 @@ sudo nmcli connection down OM1-Hotspot
 
 ### Connect to WiFi
 
-Access the web portal at http://om1-setup or http://10.42.0.1 and use the WiFi connection interface.
+Access the web portal at http://$NETWORK_NAME.local or http://10.42.0.1 and use the WiFi connection interface.
 
 ### Service Management
 
