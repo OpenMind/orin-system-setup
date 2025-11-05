@@ -101,7 +101,7 @@ nmcli device status | grep wifi
 Update interface in environment if needed:
 ```bash
 export WIFI_INTERFACE=your_interface_name
-sudo ./scripts/install.sh
+sudo ./scripts/install.sh -n $NETWORK_NAME
 ```
 
 ### Cannot Access Dashboard
