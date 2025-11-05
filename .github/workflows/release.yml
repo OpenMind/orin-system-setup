@@ -30,7 +30,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v4
         with:
-          images: openmindagi/orin-system-monitor
+          images: openmindagi/om1_monitor
           tags: |
             type=semver,pattern={{version}},prefix=v
             type=semver,pattern={{major}}.{{minor}},prefix=v
@@ -46,7 +46,7 @@ jobs:
           file: ./WIFI/Dockerfile
           platforms: linux/amd64
           labels: ${{ steps.meta.outputs.labels }}
-          outputs: type=image,name=openmindagi/orin-system-monitor,push-by-digest=true,name-canonical=true,push=true
+          outputs: type=image,name=openmindagi/om1_monitor,push-by-digest=true,name-canonical=true,push=true
 
   build-arm64:
     runs-on: ubuntu-22.04-arm
@@ -69,7 +69,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v4
         with:
-          images: openmindagi/orin-system-monitor
+          images: openmindagi/om1_monitor
           tags: |
             type=semver,pattern={{version}},prefix=v
             type=semver,pattern={{major}}.{{minor}},prefix=v
@@ -85,7 +85,7 @@ jobs:
           file: ./WIFI/Dockerfile
           platforms: linux/arm64
           labels: ${{ steps.meta.outputs.labels }}
-          outputs: type=image,name=openmindagi/orin-system-monitor,push-by-digest=true,name-canonical=true,push=true
+          outputs: type=image,name=openmindagi/om1_monitor,push-by-digest=true,name-canonical=true,push=true
 
   create-manifest:
     runs-on: ubuntu-latest
@@ -103,12 +103,12 @@ jobs:
       - name: Create manifest list and push
         run: |
           tags=$(echo '${{ needs.build-amd64.outputs.metadata }}' | jq -r '.tags[]')
-          
+
           for tag in $tags; do
             echo "Creating manifest for: $tag"
-            
+
             docker buildx imagetools create \
               --tag $tag \
-              openmindagi/orin-system-monitor@${{ needs.build-amd64.outputs.image-digest }} \
-              openmindagi/orin-system-monitor@${{ needs.build-arm64.outputs.image-digest }}
+              openmindagi/om1_monitor@${{ needs.build-amd64.outputs.image-digest }} \
+              openmindagi/om1_monitor@${{ needs.build-arm64.outputs.image-digest }}
           done

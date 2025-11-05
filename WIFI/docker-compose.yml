@@ -1,35 +1,26 @@
 services:
-  orin-monitor:
-    platform: linux/arm64
+  om1_monitor:
     build:
       context: .
       network: host
-    image: orin-system-monitor:latest
-    container_name: orin-system-monitor
+    image: openmindagi/om1_monitor:latest
+    container_name: om1_monitor
     network_mode: host
     privileged: true
     restart: unless-stopped
-    
     environment:
       - PYTHONUNBUFFERED=1
-      - PORT=80 #default port, aviod typing
+      - PORT=80
       - WIFI_INTERFACE=wlP1p1s0
-    
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/run/dbus:/var/run/dbus
       - /etc/NetworkManager:/etc/NetworkManager:ro
       - /usr/bin/nmcli:/usr/bin/nmcli:ro
       - ./logs:/app/logs
-    
     cap_add:
       - NET_ADMIN
       - NET_RAW
-    
-    labels:
-      - "com.orin.service=system-monitor"
-      - "com.orin.description=Orin System Monitor Dashboard"
-    
     logging:
       driver: "json-file"
       options:
