@@ -25,6 +25,12 @@ sudo apt uninstall -y chromium-browser
 sudo apt install -y chromium-browser
 ```
 
+Add the new hostname to your `/etc/hosts` file:
+
+```bash
+127.0.1.1   $NETWORK_NAME
+```
+
 Run the install script as root:
 
 ```bash
