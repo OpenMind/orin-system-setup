@@ -13,7 +13,6 @@ readonly PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 readonly SERVICE_NAME="om1-hotspot"
 readonly SCRIPT_PREFIX="om1"
 
-# Parse command line arguments
 NETWORK_NAME=""
 
 usage() {
@@ -49,20 +48,17 @@ parse_arguments() {
         esac
     done
 
-    # Validate network name is provided
     if [[ -z "$NETWORK_NAME" ]]; then
         log_error "Network name is required. Use -n or --network-name to specify it."
         usage
         exit 1
     fi
 
-    # Validate network name format (alphanumeric and hyphens only)
     if [[ ! "$NETWORK_NAME" =~ ^[a-zA-Z0-9-]+$ ]]; then
         log_error "Network name must contain only letters, numbers, and hyphens"
         exit 1
     fi
 
-    # Ensure it doesn't start or end with hyphen
     if [[ "$NETWORK_NAME" =~ ^- ]] || [[ "$NETWORK_NAME" =~ -$ ]]; then
         log_error "Network name cannot start or end with a hyphen"
         exit 1
@@ -107,18 +103,15 @@ check_requirements() {
     log_success "Requirements check passed"
 }
 
-# Install Avahi for mDNS/Bonjour support
 install_avahi() {
     log_info "Installing and configuring Avahi (mDNS)..."
 
-    # Check if running on Ubuntu/Debian
     if command -v apt-get &> /dev/null; then
         if ! dpkg -l | grep -q avahi-daemon; then
             log_info "Installing avahi-daemon..."
             apt-get update
             apt-get install -y avahi-daemon avahi-utils
         fi
-    # Check if running on Red Hat/CentOS/Fedora
     elif command -v dnf &> /dev/null; then
         if ! rpm -qa | grep -q avahi; then
             log_info "Installing avahi..."
@@ -134,17 +127,14 @@ install_avahi() {
         exit 1
     fi
 
-    # Create avahi service configuration
     create_avahi_service
 
-    # Enable and start avahi-daemon
     systemctl enable avahi-daemon
     systemctl start avahi-daemon
 
     log_success "Avahi installed and configured"
 }
 
-# Create Avahi service configuration for the device
 create_avahi_service() {
     log_info "Creating Avahi service configuration..."
 
@@ -170,7 +160,6 @@ EOF
     log_success "Avahi service created: ${NETWORK_NAME}.local"
 }
 
-# Install scripts to system location
 install_scripts() {
     log_info "Installing scripts..."
 
@@ -183,7 +172,6 @@ install_scripts() {
         local source_script="${script_mapping%:*}"
         local target_script="${script_mapping#*:}"
 
-        # Create a wrapper script that includes the network name
         cat > "/usr/local/bin/${target_script}.sh" << EOF
 #!/bin/bash
 export NETWORK_NAME="$NETWORK_NAME"
@@ -198,7 +186,6 @@ EOF
 configure_hotspot() {
     log_info "Configuring hotspot..."
 
-    # Export network name for the configure script
     export NETWORK_NAME="$NETWORK_NAME"
 
     if /usr/local/bin/${SCRIPT_PREFIX}-configure.sh; then
@@ -220,10 +207,8 @@ install_service() {
         exit 1
     fi
 
-    # Copy and customize the service file with the correct network name
     cp "$service_file" "$target_service"
 
-    # Update the NETWORK_NAME environment variable in the service file
     sed -i "s/Environment=\"NETWORK_NAME=om1-setup\"/Environment=\"NETWORK_NAME=${NETWORK_NAME}\"/" "$target_service"
 
     chmod 644 "$target_service"
