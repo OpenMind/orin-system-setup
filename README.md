@@ -8,10 +8,10 @@ System configuration and setup tools for OM1 robot on NVIDIA Jetson Orin platfor
 
 WiFi configuration system with 5GHz hotspot and web dashboard.
 
-[WiFi Setup Guide](WIFI/WIFI.md)
+[WiFi Setup Guide](WIFI/README.md)
 
 ### OTA Setup
 
 Over-the-air system for remote software deployment.
 
-[OTA Setup Guide](OTA/OTA.md)
+[OTA Setup Guide](OTA/README.md)
