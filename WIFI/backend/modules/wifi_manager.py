@@ -201,7 +201,7 @@ class WiFiManager:
             return {'success': False, 'message': f'Error: {str(e)}'}
     
     def _connect_wifi_direct_task(self, ssid: str, password: str):
-        """Background task to connect to WiFi using direct device method"""
+        """Background task to connect to WiFi"""
         try:
             # Wait 5 seconds to let user see the response
             time.sleep(5)
@@ -210,7 +210,7 @@ class WiFiManager:
             self.stop_hotspot()
             
             # Wait for hotspot to fully stop and interface to stabilize
-            time.sleep(5)
+            time.sleep(10)
             
             # Step 2: Direct device connect (bypasses connection add)
             cmd = [self.NMCLI, "device", "wifi", "connect", ssid]
@@ -248,7 +248,7 @@ class WiFiManager:
         """Handle WiFi connection failure"""
         try:
             # Wait a bit to ensure connection attempt is fully failed
-            time.sleep(5)
+            time.sleep(20)
             
             # Try to delete the failed connection
             self.delete_connection(ssid)
