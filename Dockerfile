@@ -5,7 +5,7 @@ RUN python3 -m pip install --upgrade pip
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 
 WORKDIR /app
-COPY ./OTA ./OTA
+COPY . .
 
 RUN uv venv /app/.venv && \
     uv pip install -r pyproject.toml

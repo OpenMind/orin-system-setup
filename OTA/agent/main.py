@@ -1,4 +1,5 @@
 import logging
+import time
 import os
 
 from ..utils.ota import BaseOTA
@@ -32,6 +33,10 @@ def main():
 
         ota.ws_client.register_message_callback(callback_with_client)
         ota.ws_client.connect()
+
+        while True:
+            time.sleep(5)
+
     except Exception as e:
         logging.error(f"Failed to connect to OTA server: {e}")
 

@@ -53,7 +53,7 @@ class WebSocketClient:
                 self.connected = False
                 break
 
-    async def _send_messages(self):
+    def _send_messages(self):
         """
         Internal method to handle sending messages through the WebSocket connection.
 

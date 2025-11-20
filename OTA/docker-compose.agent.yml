@@ -5,6 +5,7 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile
+    image: openmindagi/ota:latest
     container_name: ota-agent
     restart: unless-stopped
     environment:
@@ -13,8 +14,9 @@ services:
       - OTA_SERVER_URL=${OTA_SERVER_URL:-wss://api.openmind.org/api/v1/ota/agent}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - /usr/bin/docker:/usr/local/bin/docker:ro
       - /usr/local/bin/docker-compose:/usr/local/bin/docker-compose:ro
-      - ota_updates:/app/.ota
+      - ./.ota:/app/.ota
     network_mode: host
     command: python -m OTA.agent.main
     logging:
