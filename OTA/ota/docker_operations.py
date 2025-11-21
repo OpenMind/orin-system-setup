@@ -22,6 +22,7 @@ class DockerManager:
             Reporter for sending progress updates
         """
         self.progress_reporter = progress_reporter
+        self._completed_layers = set()
 
     def stop_docker_services(self, yaml_content: dict) -> dict:
         """
@@ -121,6 +122,8 @@ class DockerManager:
             Result with success status and output information
         """
         try:
+            self._completed_layers = set()
+
             process = subprocess.Popen(
                 pull_cmd,
                 stdout=subprocess.PIPE,
@@ -147,9 +150,8 @@ class DockerManager:
                     line = output.strip()
                     logging.info(f"Docker pull output: {line}")
 
-                    if "Pulling" in line:
-                        # Extract service name from "Pulling service_name..." or similar patterns
-                        service_match = re.search(r"Pulling\s+(\w+)", line)
+                    if line.startswith("Pulling "):
+                        service_match = re.search(r"^Pulling\s+(\w+)", line)
                         if service_match:
                             current_service = service_match.group(1)
                             services_found.add(current_service)
@@ -161,55 +163,55 @@ class DockerManager:
                                 f"Pulling {current_service}",
                                 progress,
                             )
-                        elif not service_match and current_service is None:
-                            # Generic pulling message
-                            self._send_progress_update(
-                                "pulling", f"Pulling: {line}", 35
-                            )
 
-                    elif "Pull complete" in line or "Already exists" in line:
-                        if current_service:
-                            services_pulled.add(current_service)
-                            progress = 30 + (
-                                len(services_pulled) * 40 // max(len(services_found), 1)
-                            )
+                    elif "Pull complete" in line:
+                        layer_match = re.search(r"^([a-f0-9]+)\s+Pull complete", line)
+                        if layer_match:
+                            layer_id = layer_match.group(1)
+                            if not hasattr(self, "_completed_layers"):
+                                self._completed_layers = set()
+                            self._completed_layers.add(layer_id)
+
+                            progress = 30 + min(len(self._completed_layers) * 5, 40)
                             self._send_progress_update(
-                                "pulled_service",
-                                f"Completed pulling {current_service}",
+                                "layer_complete",
+                                f"Completed layer {layer_id[:12]}...",
                                 progress,
                             )
-                            current_service = None
 
                     elif "Downloading" in line:
-                        # Show downloading progress if available
                         download_match = re.search(
-                            r"Downloading\s+([\w.]+)\s+(\d+\.\d+\w+)\s*/\s*(\d+\.\d+\w+)",
+                            r"^([a-f0-9]+)\s+Downloading.*?(\d+(?:\.\d+)?[KMGT]?B)/(\d+(?:\.\d+)?[KMGT]?B)",
                             line,
                         )
-                        if download_match and current_service:
-                            layer, current_size, total_size = download_match.groups()
+                        if download_match:
+                            layer_id, current_size, total_size = download_match.groups()
+                            progress = 35 + (
+                                len(services_pulled)
+                                * 35
+                                // max(len(services_found) or 1, 1)
+                            )
                             self._send_progress_update(
                                 "downloading",
-                                f"Downloading {current_service}: {current_size}/{total_size}",
-                                30
-                                + (
-                                    len(services_pulled)
-                                    * 40
-                                    // max(len(services_found), 1)
-                                ),
+                                f"Downloading layer {layer_id[:12]}...: {current_size}/{total_size}",
+                                progress,
                             )
 
-                    elif "Extracting" in line and current_service:
-                        self._send_progress_update(
-                            "extracting",
-                            f"Extracting {current_service}",
-                            30
-                            + (
-                                len(services_pulled) * 40 // max(len(services_found), 1)
-                            ),
-                        )
+                    elif "Extracting" in line:
+                        extract_match = re.search(r"^([a-f0-9]+)\s+Extracting", line)
+                        if extract_match:
+                            layer_id = extract_match.group(1)
+                            progress = 50 + (
+                                len(services_pulled)
+                                * 20
+                                // max(len(services_found) or 1, 1)
+                            )
+                            self._send_progress_update(
+                                "extracting",
+                                f"Extracting layer {layer_id[:12]}...",
+                                progress,
+                            )
 
-            # Wait for process to complete and get any remaining output
             stdout_remainder, stderr_output = process.communicate()
             if stdout_remainder:
                 stdout_lines.extend(stdout_remainder.strip().split("\n"))

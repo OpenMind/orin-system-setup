@@ -3,3 +3,4 @@ __pycache__
 .ruff_cache
 .ota
 *.egg-info
+.DS_Store

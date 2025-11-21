@@ -83,16 +83,10 @@ class BaseOTA:
 
                 if not action:
                     logging.error("Invalid OTA message: missing action")
-                    self.progress_reporter.send_progress_update(
-                        "error", "Missing action in OTA message", 0
-                    )
                     return
 
                 if not service_name:
                     logging.error("Invalid OTA message: missing service_name")
-                    self.progress_reporter.send_progress_update(
-                        "error", "Missing service_name in OTA message", 0
-                    )
                     return
 
                 logging.info(f"Processing {action} action for service: {service_name}")
