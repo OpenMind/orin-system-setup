@@ -2,7 +2,7 @@ import logging
 import os
 import time
 
-from ..utils.ota import BaseOTA
+from ..ota import BaseOTA
 
 OTA_SERVER_URL = os.getenv(
     "OTA_SERVER_URL", "wss://api.openmind.org/api/core/ota/updater"

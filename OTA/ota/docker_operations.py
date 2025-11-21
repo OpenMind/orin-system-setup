@@ -1,121 +1,27 @@
-import json
 import logging
 import os
 import re
-import shutil
 import subprocess
 import tempfile
 
-from .s3_utils import S3FileDownloader
-from .ws_client import WebSocketClient
+import yaml
 
 logging.basicConfig(level=logging.INFO)
 
 
-class BaseOTA:
-    def __init__(
-        self, ota_server_url: str, om_api_key: str, om_api_key_id: str
-    ) -> None:
-        self.ota_server_url = ota_server_url
-        self.om_api_key = om_api_key
-        self.om_api_key_id = om_api_key_id
+class DockerManager:
+    """Handles all Docker-related operations for OTA updates."""
 
-        if not self.ota_server_url or not self.om_api_key or not self.om_api_key_id:
-            raise ValueError("OTA server URL and API keys must be provided")
-
-        self.ws_client = self.create_ws_client()
-
-    def create_ws_client(self) -> WebSocketClient:
+    def __init__(self, progress_reporter=None):
         """
-        Factory function to create a WebSocketClient instance.
-        """
-        return WebSocketClient(
-            url=f"{self.ota_server_url}?api_key_id={self.om_api_key_id}&api_key={self.om_api_key}"
-        )
-
-    def apply_ota_update(
-        self,
-        service_name: str,
-        yaml_content: dict,
-        temp_yaml_path: str,
-        tag: str,
-        ws_client=None,
-    ):
-        """
-        Apply the OTA update based on the YAML content.
+        Initialize DockerManager.
 
         Parameters
         ----------
-        service_name : str
-            The name of the service to be updated
-        yaml_content : dict
-            The parsed YAML content containing update instructions
-        temp_yaml_path : str
-            The temporary path of the downloaded YAML file
-        tag : str
-            The update tag/version
-        ws_client : WebSocketClient, optional
-            WebSocket client for sending progress updates
+        progress_reporter : ProgressReporter, optional
+            Reporter for sending progress updates
         """
-        logging.info(f"Applying OTA update {tag} with content: {yaml_content}")
-
-        self.send_progress_update(
-            ws_client, "starting", f"Starting OTA update {tag}", 0
-        )
-
-        updates_dir = os.path.abspath(".ota")
-        os.makedirs(updates_dir, mode=0o755, exist_ok=True)
-
-        try:
-            logging.info("Stopping current Docker services...")
-            self.send_progress_update(
-                ws_client, "stopping", "Stopping current Docker services", 10
-            )
-            stop_result = self.stop_docker_services(yaml_content)
-            if not stop_result.get("success"):
-                error_msg = f"Failed to stop Docker services: {stop_result.get('error', 'Unknown error')}"
-                logging.error(error_msg)
-                self.send_progress_update(ws_client, "error", error_msg, 10)
-
-            self.send_progress_update(ws_client, "storing", "Storing update files", 20)
-            stored_version_yaml_path = os.path.join(
-                updates_dir, f"{service_name}_{tag}.yaml"
-            )
-            stored_latest_yaml_path = os.path.join(
-                updates_dir, f"{service_name}_latest.yaml"
-            )
-
-            try:
-                shutil.copy2(temp_yaml_path, stored_version_yaml_path)
-                shutil.copy2(temp_yaml_path, stored_latest_yaml_path)
-                logging.info(
-                    f"Stored OTA update files: {stored_version_yaml_path}, {stored_latest_yaml_path}"
-                )
-            except Exception as e:
-                error_msg = f"Failed to store OTA update file: {e}"
-                logging.error(error_msg)
-                self.send_progress_update(ws_client, "error", error_msg, 20)
-                return False
-
-            logging.info("Starting updated Docker services...")
-            start_result = self.start_docker_services(yaml_content, ws_client)
-            if not start_result.get("success"):
-                error_msg = f"Failed to start Docker services: {start_result.get('error', 'Unknown error')}"
-                logging.error(error_msg)
-                self.send_progress_update(ws_client, "error", error_msg, 80)
-                return False
-
-            logging.info(f"Successfully applied OTA update {tag}")
-            self.send_progress_update(
-                ws_client, "completed", f"Successfully applied OTA update {tag}", 100
-            )
-            return True
-
-        except Exception as e:
-            error_msg = f"Unexpected error during OTA update: {e}"
-            logging.error(error_msg)
-            self.send_progress_update(ws_client, "error", error_msg, 0)
-            return False
+        self.progress_reporter = progress_reporter
 
     def stop_docker_services(self, yaml_content: dict) -> dict:
         """
@@ -200,7 +106,7 @@ class BaseOTA:
             logging.error(f"Error in stop_docker_services: {e}")
             return {"success": False, "error": str(e)}
 
-    def pull_images_with_progress(self, pull_cmd: list, ws_client=None) -> dict:
+    def pull_images_with_progress(self, pull_cmd: list) -> dict:
         """
         Pull Docker images with real-time progress reporting.
 
@@ -208,8 +114,6 @@ class BaseOTA:
         ----------
         pull_cmd : list
             The docker-compose pull command
-        ws_client : WebSocketClient, optional
-            WebSocket client for sending progress updates
 
         Returns
         -------
@@ -252,16 +156,15 @@ class BaseOTA:
                             progress = 30 + (
                                 len(services_pulled) * 40 // max(len(services_found), 1)
                             )
-                            self.send_progress_update(
-                                ws_client,
+                            self._send_progress_update(
                                 "pulling_service",
                                 f"Pulling {current_service}",
                                 progress,
                             )
                         elif not service_match and current_service is None:
                             # Generic pulling message
-                            self.send_progress_update(
-                                ws_client, "pulling", f"Pulling: {line}", 35
+                            self._send_progress_update(
+                                "pulling", f"Pulling: {line}", 35
                             )
 
                     elif "Pull complete" in line or "Already exists" in line:
@@ -270,8 +173,7 @@ class BaseOTA:
                             progress = 30 + (
                                 len(services_pulled) * 40 // max(len(services_found), 1)
                             )
-                            self.send_progress_update(
-                                ws_client,
+                            self._send_progress_update(
                                 "pulled_service",
                                 f"Completed pulling {current_service}",
                                 progress,
@@ -286,8 +188,7 @@ class BaseOTA:
                         )
                         if download_match and current_service:
                             layer, current_size, total_size = download_match.groups()
-                            self.send_progress_update(
-                                ws_client,
+                            self._send_progress_update(
                                 "downloading",
                                 f"Downloading {current_service}: {current_size}/{total_size}",
                                 30
@@ -299,8 +200,7 @@ class BaseOTA:
                             )
 
                     elif "Extracting" in line and current_service:
-                        self.send_progress_update(
-                            ws_client,
+                        self._send_progress_update(
                             "extracting",
                             f"Extracting {current_service}",
                             30
@@ -359,7 +259,7 @@ class BaseOTA:
                 "output": "\n".join(stdout_lines) if "stdout_lines" in locals() else "",
             }
 
-    def start_docker_services(self, yaml_content: dict, ws_client=None) -> dict:
+    def start_docker_services(self, yaml_content: dict) -> dict:
         """
         Start Docker containers/services based on the update configuration.
 
@@ -367,8 +267,6 @@ class BaseOTA:
         ----------
         yaml_content : dict
             The parsed YAML content containing service definitions
-        ws_client : WebSocketClient, optional
-            WebSocket client for sending progress updates
 
         Returns
         -------
@@ -387,12 +285,12 @@ class BaseOTA:
                 temp_compose_file = self.create_temp_compose_file(yaml_content)
 
                 logging.info("Pulling Docker images...")
-                self.send_progress_update(
-                    ws_client, "pulling", "Starting to pull Docker images", 30
+                self._send_progress_update(
+                    "pulling", "Starting to pull Docker images", 30
                 )
 
                 pull_cmd = ["docker-compose", "-f", temp_compose_file, "pull"]
-                pull_result = self.pull_images_with_progress(pull_cmd, ws_client)
+                pull_result = self.pull_images_with_progress(pull_cmd)
 
                 if not pull_result.get("success"):
                     return {
@@ -402,13 +300,13 @@ class BaseOTA:
                     }
 
                 logging.info("Successfully pulled Docker images")
-                self.send_progress_update(
-                    ws_client, "pulled", "Successfully pulled Docker images", 70
+                self._send_progress_update(
+                    "pulled", "Successfully pulled Docker images", 70
                 )
 
                 logging.info("Starting Docker services...")
-                self.send_progress_update(
-                    ws_client, "starting_services", "Starting Docker services", 80
+                self._send_progress_update(
+                    "starting_services", "Starting Docker services", 80
                 )
                 up_cmd = [
                     "docker-compose",
@@ -429,7 +327,7 @@ class BaseOTA:
                     logging.info("Successfully started services with docker-compose")
 
                     # Clean up old images after successful deployment
-                    cleanup_result = self.cleanup_old_images(ws_client)
+                    cleanup_result = self.cleanup_old_images()
 
                     return {
                         "success": True,
@@ -477,8 +375,6 @@ class BaseOTA:
         str
             Path to the temporary docker-compose file
         """
-        import yaml
-
         temp_file = tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False)
         try:
             yaml.dump(yaml_content, temp_file, default_flow_style=False)
@@ -488,14 +384,9 @@ class BaseOTA:
         finally:
             temp_file.close()
 
-    def cleanup_old_images(self, ws_client=None) -> dict:
+    def cleanup_old_images(self) -> dict:
         """
         Clean up old, unused Docker images to free up disk space.
-
-        Parameters
-        ----------
-        ws_client : WebSocketClient, optional
-            WebSocket client for sending progress updates
 
         Returns
         -------
@@ -504,9 +395,7 @@ class BaseOTA:
         """
         try:
             logging.info("Cleaning up old Docker images...")
-            self.send_progress_update(
-                ws_client, "cleanup", "Cleaning up old Docker images", 90
-            )
+            self._send_progress_update("cleanup", "Cleaning up old Docker images", 90)
 
             cleanup_cmds = [
                 ["docker", "image", "prune", "-f"],
@@ -571,7 +460,7 @@ class BaseOTA:
                     f"Cleaned up Docker resources. Space freed: {total_space_freed}"
                 )
                 logging.info(message)
-                self.send_progress_update(ws_client, "cleanup_complete", message, 95)
+                self._send_progress_update("cleanup_complete", message, 95)
                 return {
                     "success": True,
                     "message": message,
@@ -591,17 +480,15 @@ class BaseOTA:
         except Exception as e:
             error_msg = f"Error during Docker cleanup: {e}"
             logging.error(error_msg)
-            self.send_progress_update(ws_client, "cleanup_error", error_msg, 90)
+            self._send_progress_update("cleanup_error", error_msg, 90)
             return {"success": False, "error": error_msg}
 
-    def send_progress_update(self, ws_client, status: str, message: str, progress: int):
+    def _send_progress_update(self, status: str, message: str, progress: int):
         """
-        Send progress update through WebSocket.
+        Send progress update through the progress reporter.
 
         Parameters
         ----------
-        ws_client : WebSocketClient
-            WebSocket client to send updates through
         status : str
             Current status of the operation
         message : str
@@ -609,95 +496,5 @@ class BaseOTA:
         progress : int
             Progress percentage (0-100)
         """
-        if ws_client:
-            update_data = {
-                "type": "ota_progress",
-                "status": status,
-                "message": message,
-                "progress": progress,
-                "timestamp": json.dumps(
-                    None
-                ),  # Will be set by json.dumps with current time
-            }
-            try:
-                ws_client.send_message(json.dumps(update_data))
-                logging.info(
-                    f"Sent progress update: {status} - {message} ({progress}%)"
-                )
-            except Exception as e:
-                logging.warning(f"Failed to send progress update: {e}")
-
-    def ota_process(self, message: str, ws_client=None):
-        """
-        Process OTA messages received from the WebSocket server.
-
-        Parameters
-        ----------
-        message : str
-            The message received from the WebSocket server.
-        ws_client : WebSocketClient, optional
-            WebSocket client for sending progress updates
-        """
-        if isinstance(message, str):
-            logging.info(f"Received OTA update message: {message}")
-            try:
-                data = json.loads(message)
-                logging.info(f"Processing OTA update data: {data}")
-
-                # tag
-                # s3 url
-                # checksum
-                # service name
-                tag = data.get("tag")
-                s3_url = data.get("s3_url")
-                checksum = data.get("checksum")
-                service_name = data.get("service_name")
-                if not tag or not s3_url or not checksum or not service_name:
-                    logging.error("Invalid OTA update message: missing required fields")
-                    return
-
-                logging.info(
-                    f"OTA Update Details - Tag: {tag}, S3 URL: {s3_url}, Checksum: {checksum}, Service Name: {service_name}"
-                )
-
-                s3_downloader = S3FileDownloader()
-                yaml_content, local_file_path = s3_downloader.download_and_verify_yaml(
-                    s3_url=s3_url, expected_checksum=checksum, algorithm="sha256"
-                )
-
-                if yaml_content and local_file_path:
-                    logging.info(
-                        f"Successfully downloaded and verified YAML file: {local_file_path}"
-                    )
-                    logging.info(f"YAML content: {yaml_content}")
-
-                    self.apply_ota_update(
-                        service_name, yaml_content, local_file_path, tag, ws_client
-                    )
-
-                    try:
-                        os.unlink(local_file_path)
-                        logging.info("Cleaned up downloaded file")
-                    except OSError as e:
-                        logging.warning(
-                            f"Failed to clean up file {local_file_path}: {e}"
-                        )
-                else:
-                    logging.error("Failed to download or verify YAML file from S3")
-                    self.send_progress_update(
-                        ws_client,
-                        "download_error",
-                        "Failed to download or verify YAML file from S3",
-                        0,
-                    )
-
-            except json.JSONDecodeError as e:
-                logging.error(f"Failed to decode JSON message: {e}")
-                self.send_progress_update(
-                    ws_client, "decode_error", "Failed to decode message", 0
-                )
-        else:
-            logging.warning("Received non-string message, ignoring.")
-            self.send_progress_update(
-                ws_client, "error_message", "Failed to decode message", 0
-            )
+        if self.progress_reporter:
+            self.progress_reporter.send_progress_update(status, message, progress)
