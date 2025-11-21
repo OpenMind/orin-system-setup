@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  ota-agent:
+  ota_agent:
     build:
       context: ..
       dockerfile: ./OTA/Dockerfile
@@ -24,7 +24,7 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  ota-updater:
+  ota_updater:
     build:
       context: ..
       dockerfile: ./OTA/Dockerfile
