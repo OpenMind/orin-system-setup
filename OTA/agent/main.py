@@ -38,65 +38,65 @@ class AgentOTA(BaseOTA):
                 "DOCKER_CONTAINER_STATUS_URL environment variable must be set"
             )
 
-        self.container_names_url = f"{DOCKER_CONTAINER_STATUS_URL}/names"
+        self.container_info_url = f"{DOCKER_CONTAINER_STATUS_URL}/info"
         self.container_status_url = f"{DOCKER_CONTAINER_STATUS_URL}/status"
-        self.container_names = [
-            "om1",
-            "om1_sensor",
-            "orchestrator",
-            "watchdog",
-            "zenoh_bridge",
-            "om1_avatar",
-            "om1_monitor",
-            "om1_video_processor",
-            "ota_agent",
-            "ota_updater",
-        ]
+        self.container_descriptions = {
+            "om1": "OM1 main container running the robot OS",
+            "om1_sensor": "OM1 sensor processing container handling sensor data",
+            "orchestrator": "ROS2 Orchestrator service container managing ROS2 nodes",
+            "watchdog": "ROS2 Watchdog service container monitoring system health",
+            "zenoh_bridge": "Zenoh Bridge service container serving the communication between OM1 and ROS2",
+            "om1_avatar": "OM1 Avatar container managing avatar functionalities",
+            "om1_monitor": "OM1 Monitor container for system monitoring",
+            "om1_video_processor": "OM1 Video Processor container handling video streams",
+            "ota_agent": "OM1 OTA Agent container for over-the-air updates",
+            "ota_updater": "OM1 OTA Updater container for managing the OTA Agent updates",
+        }
 
-        self.container_name_thread: Optional[threading.Thread] = None
+        self.container_info_thread: Optional[threading.Thread] = None
         self.container_status_thread: Optional[threading.Thread] = None
 
-        self.start_fetching_container_names()
+        self.start_fetching_container_info()
         self.start_reporting_container_status()
 
-    def _fetch_docker_name(self):
+    def _fetch_docker_info(self):
         """
-        Fetch the list of Docker container names from the server.
+        Fetch the list of Docker container info from the server.
         """
         try:
             response = requests.get(
-                self.container_names_url,
+                self.container_info_url,
                 headers={"x-api-key": self.om_api_key},
                 timeout=10,
             )
             response.raise_for_status()
             data = response.json()
-            container_names = data.get("container_names", [])
-            if container_names:
-                self.container_names = container_names
+            container_info = data.get("container_info", [])
+            if container_info:
+                self.container_descriptions = container_info
             time.sleep(30)
         except Exception as e:
-            logging.error(f"Failed to fetch Docker container names: {e}")
+            logging.error(f"Failed to fetch Docker container info: {e}")
             time.sleep(5)
 
-    def start_fetching_container_names(self):
+    def start_fetching_container_info(self):
         """
-        Start the background thread for periodic Docker container names fetching.
+        Start the background thread for periodic Docker container info fetching.
         """
         if (
-            self.container_name_thread is None
-            or not self.container_name_thread.is_alive()
+            self.container_info_thread is None
+            or not self.container_info_thread.is_alive()
         ):
-            self.container_name_thread = threading.Thread(
-                target=self._fetch_docker_name, daemon=True
+            self.container_info_thread = threading.Thread(
+                target=self._fetch_docker_info, daemon=True
             )
-            self.container_name_thread.start()
+            self.container_info_thread.start()
             logging.info(
-                "Started periodic Docker container names fetching (every 30 seconds)"
+                "Started periodic Docker container info fetching (every 30 seconds)"
             )
             return
 
-        logging.info("Docker container names fetching thread is already running.")
+        logging.info("Docker container info fetching thread is already running.")
 
     def read_container_status(self) -> Optional[dict]:
         """
@@ -124,9 +124,12 @@ class AgentOTA(BaseOTA):
                         container_info = json.loads(line)
                         container_name = container_info.get("Names", "").strip()
 
-                        if container_name in self.container_names:
+                        if container_name in self.container_descriptions.keys():
                             found_containers.add(container_name)
                             container_status[container_name] = {
+                                "description": self.container_descriptions.get(
+                                    container_name, "No description available"
+                                ),
                                 "status": container_info.get("State", "unknown"),
                                 "image": container_info.get("Image", "unknown"),
                                 "ports": container_info.get("Ports", ""),
@@ -139,9 +142,14 @@ class AgentOTA(BaseOTA):
                         logging.warning(f"Failed to parse container info: {e}")
                         continue
 
-            missing_containers = set(self.container_names) - found_containers
+            missing_containers = (
+                set(self.container_descriptions.keys()) - found_containers
+            )
             for missing_container in missing_containers:
                 container_status[missing_container] = {
+                    "description": self.container_descriptions.get(
+                        missing_container, "No description available"
+                    ),
                     "status": "missing",
                     "image": "unknown",
                     "ports": "",

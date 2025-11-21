@@ -4,6 +4,11 @@ import time
 from queue import Empty, Queue
 from typing import Callable, Optional
 
+from websockets.exceptions import (
+    ConnectionClosed,
+    ConnectionClosedError,
+    ConnectionClosedOK,
+)
 from websockets.sync.client import ClientConnection, connect
 
 
@@ -45,9 +50,21 @@ class WebSocketClient:
         """
         while self.running and self.connected and self.websocket:
             try:
-                message = self.websocket.recv()
+                message = self.websocket.recv(timeout=30)
                 if self.message_callback:
                     self.message_callback(message)
+            except ConnectionClosedOK:
+                logging.info("WebSocket connection closed normally")
+                self.connected = False
+                break
+            except ConnectionClosedError:
+                logging.warning("WebSocket connection closed with error")
+                self.connected = False
+                break
+            except ConnectionClosed:
+                logging.info("WebSocket connection was closed")
+                self.connected = False
+                break
             except Exception as e:
                 logging.error(f"Error in message processing: {e}")
                 self.connected = False
@@ -66,8 +83,21 @@ class WebSocketClient:
                     message = self.message_queue.get(timeout=0.1)
                     try:
                         self.websocket.send(message)
+                    except ConnectionClosedOK:
+                        logging.info("WebSocket closed normally during send")
+                        self.connected = False
+                        self.message_queue.put(message)
+                    except ConnectionClosedError:
+                        logging.warning("WebSocket closed with error during send")
+                        self.connected = False
+                        self.message_queue.put(message)
+                    except ConnectionClosed:
+                        logging.info("WebSocket connection closed during send")
+                        self.connected = False
+                        self.message_queue.put(message)
                     except Exception as e:
                         logging.error(f"Failed to send message: {e}")
+                        self.connected = False
                         self.message_queue.put(message)
                 else:
                     time.sleep(0.1)
@@ -121,8 +151,23 @@ class WebSocketClient:
         message : Union[str, bytes]
             The message to send, either as a string or bytes
         """
-        if self.connected:
+        if self.connected and self.running:
             self.message_queue.put(message)
+        else:
+            logging.warning(
+                "Cannot queue message: WebSocket client is not connected or not running"
+            )
+
+    def is_connected(self) -> bool:
+        """
+        Check if the WebSocket client is currently connected.
+
+        Returns
+        -------
+        bool
+            True if connected and running, False otherwise
+        """
+        return self.connected and self.running and self.websocket is not None
 
     def _run_client(self):
         """
@@ -159,12 +204,22 @@ class WebSocketClient:
         Closes the WebSocket connection, stops all threads, and cleans up resources.
         """
         self.running = False
+        self.connected = False
+
         if self.websocket:
             try:
-                self.websocket.close()
-                logging.info("WebSocket connection closed")
-            except Exception as _:
-                pass
+                self.websocket.close(code=1000, reason="Client shutdown")
+                logging.info("WebSocket connection closed gracefully")
+            except ConnectionClosedOK:
+                logging.info("WebSocket connection was already closed normally")
+            except ConnectionClosedError:
+                logging.warning("WebSocket connection was already closed with error")
+            except ConnectionClosed:
+                logging.info("WebSocket connection was already closed")
+            except Exception as e:
+                logging.warning(f"Error during WebSocket close: {e}")
+            finally:
+                self.websocket = None
 
         try:
             while True:
@@ -173,5 +228,4 @@ class WebSocketClient:
         except Empty:
             pass
 
-        self.connected = False
         logging.info("WebSocket client stopped")
