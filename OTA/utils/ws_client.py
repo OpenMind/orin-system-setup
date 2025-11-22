@@ -65,6 +65,9 @@ class WebSocketClient:
                 logging.info("WebSocket connection was closed")
                 self.connected = False
                 break
+            except TimeoutError:
+                logging.warning("WebSocket receive timed out")
+                continue
             except Exception as e:
                 logging.error(f"Error in message processing: {e}")
                 self.connected = False
