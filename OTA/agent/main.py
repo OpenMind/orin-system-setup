@@ -59,6 +59,8 @@ class AgentOTA(BaseOTA):
         self.start_fetching_container_info()
         self.start_reporting_container_status()
 
+        self.set_ota_process_callback(self._report_container_status)
+
     def _fetch_docker_info(self):
         """
         Fetch the list of Docker container info from the server.
@@ -205,7 +207,7 @@ class AgentOTA(BaseOTA):
                     )
                 except Exception as e:
                     logging.error(f"Failed to report Docker container status: {e}")
-            time.sleep(30)
+            time.sleep(5)
 
     def start_reporting_container_status(self):
         """

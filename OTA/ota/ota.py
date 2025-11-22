@@ -1,5 +1,6 @@
 import json
 import logging
+from typing import Callable, Optional
 
 from ..utils.ws_client import WebSocketClient
 from .action_handlers import ActionHandlers
@@ -44,6 +45,8 @@ class BaseOTA:
 
         self.ws_client = self.create_ws_client()
         self.progress_reporter.set_ws_client(self.ws_client)
+
+        self.ota_process_callback: Optional[Callable] = None
 
     def create_ws_client(self) -> WebSocketClient:
         """
@@ -107,8 +110,23 @@ class BaseOTA:
                 self.progress_reporter.send_progress_update(
                     "decode_error", "Failed to decode message", 0
                 )
+
+            if self.ota_process_callback:
+                self.ota_process_callback(message)
+
         else:
             logging.warning("Received non-string message, ignoring.")
             self.progress_reporter.send_progress_update(
                 "error_message", "Failed to decode message", 0
             )
+
+    def set_ota_process_callback(self, callback: Callable):
+        """
+        Set a callback function to be called after processing an OTA message.
+
+        Parameters
+        ----------
+        callback : Callable
+            The callback function to set
+        """
+        self.ota_process_callback = callback
