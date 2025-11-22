@@ -184,9 +184,14 @@ class AgentOTA(BaseOTA):
             logging.error(f"Failed to read local Docker container status: {e}")
             return None
 
-    def _report_container_status(self):
+    def _report_container_status(self, message=None):
         """
         Report the Docker container status to the server periodically.
+
+        Parameters
+        ----------
+        message : str, optional
+            OTA message (unused in this method, but required for callback compatibility)
         """
         while True:
             status = self.read_container_status()
