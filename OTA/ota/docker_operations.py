@@ -71,16 +71,117 @@ class DockerManager:
 
                         if stop_result.returncode == 0:
                             logging.info(f"Stopped container: {container_name}")
-                            stopped_services.append(container_name)
-                        else:
-                            logging.error(
-                                f"Failed to stop container {container_name}: {stop_result.stderr}"
+
+                            remove_cmd = ["docker", "rm", container_name]
+                            remove_result = subprocess.run(
+                                remove_cmd, capture_output=True, text=True, timeout=10
                             )
-                            failed_services.append(container_name)
+
+                            if remove_result.returncode == 0:
+                                logging.info(f"Removed container: {container_name}")
+                                stopped_services.append(container_name)
+                            else:
+                                logging.warning(
+                                    f"Normal remove failed for {container_name}, trying force remove"
+                                )
+                                force_remove_cmd = [
+                                    "docker",
+                                    "rm",
+                                    "-f",
+                                    container_name,
+                                ]
+                                force_remove_result = subprocess.run(
+                                    force_remove_cmd,
+                                    capture_output=True,
+                                    text=True,
+                                    timeout=10,
+                                )
+
+                                if force_remove_result.returncode == 0:
+                                    logging.info(
+                                        f"Force removed container: {container_name}"
+                                    )
+                                    stopped_services.append(container_name)
+                                else:
+                                    logging.error(
+                                        f"Failed to remove container {container_name}: {force_remove_result.stderr}"
+                                    )
+                                    failed_services.append(container_name)
+                        else:
+                            logging.warning(
+                                f"Normal stop failed for {container_name}, trying force stop"
+                            )
+                            force_stop_cmd = ["docker", "kill", container_name]
+                            force_stop_result = subprocess.run(
+                                force_stop_cmd,
+                                capture_output=True,
+                                text=True,
+                                timeout=10,
+                            )
+
+                            if force_stop_result.returncode == 0:
+                                logging.info(
+                                    f"Force stopped container: {container_name}"
+                                )
+
+                                remove_cmd = ["docker", "rm", "-f", container_name]
+                                remove_result = subprocess.run(
+                                    remove_cmd,
+                                    capture_output=True,
+                                    text=True,
+                                    timeout=10,
+                                )
+
+                                if remove_result.returncode == 0:
+                                    logging.info(
+                                        f"Removed container after force stop: {container_name}"
+                                    )
+                                    stopped_services.append(container_name)
+                                else:
+                                    logging.error(
+                                        f"Failed to remove container after force stop {container_name}: {remove_result.stderr}"
+                                    )
+                                    failed_services.append(container_name)
+                            else:
+                                logging.error(
+                                    f"Failed to force stop container {container_name}: {force_stop_result.stderr}"
+                                )
+                                failed_services.append(container_name)
                     else:
-                        logging.info(
-                            f"Container {container_name} not running or doesn't exist"
+                        check_stopped_cmd = [
+                            "docker",
+                            "ps",
+                            "-a",
+                            "-q",
+                            "--filter",
+                            f"name={container_name}",
+                        ]
+                        check_stopped_result = subprocess.run(
+                            check_stopped_cmd,
+                            capture_output=True,
+                            text=True,
+                            timeout=10,
                         )
+
+                        if (
+                            check_stopped_result.returncode == 0
+                            and check_stopped_result.stdout.strip()
+                        ):
+                            remove_cmd = ["docker", "rm", "-f", container_name]
+                            remove_result = subprocess.run(
+                                remove_cmd, capture_output=True, text=True, timeout=10
+                            )
+
+                            if remove_result.returncode == 0:
+                                logging.info(
+                                    f"Removed stopped container: {container_name}"
+                                )
+                            else:
+                                logging.warning(
+                                    f"Failed to remove stopped container {container_name}: {remove_result.stderr}"
+                                )
+                        else:
+                            logging.info(f"Container {container_name} not found")
 
                 except subprocess.TimeoutExpired:
                     logging.error(f"Timeout stopping service {service_name}")
