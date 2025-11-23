@@ -586,6 +586,253 @@ class DockerManager:
             self._send_progress_update("cleanup_error", error_msg, 90)
             return {"success": False, "error": error_msg}
 
+    def pause_docker_services(self, yaml_content: dict) -> dict:
+        """
+        Pause Docker containers based on the service configuration.
+
+        Parameters
+        ----------
+        yaml_content : dict
+            The parsed YAML content containing service definitions
+
+        Returns
+        -------
+        dict
+            Result with success status and error information
+        """
+        try:
+            services = yaml_content.get("services", {})
+
+            if not services:
+                logging.warning("No services defined in YAML")
+                return {"success": True, "message": "No services to pause"}
+
+            paused_services = []
+            failed_services = []
+
+            for service_name, service_config in services.items():
+                try:
+                    container_name = service_config.get("container_name", service_name)
+
+                    check_cmd = [
+                        "docker",
+                        "ps",
+                        "-q",
+                        "--filter",
+                        f"name={container_name}",
+                    ]
+                    check_result = subprocess.run(
+                        check_cmd, capture_output=True, text=True, timeout=10
+                    )
+
+                    if check_result.returncode == 0 and check_result.stdout.strip():
+                        pause_cmd = ["docker", "pause", container_name]
+                        pause_result = subprocess.run(
+                            pause_cmd, capture_output=True, text=True, timeout=30
+                        )
+
+                        if pause_result.returncode == 0:
+                            logging.info(f"Paused container: {container_name}")
+                            paused_services.append(container_name)
+                        else:
+                            logging.error(
+                                f"Failed to pause container {container_name}: {pause_result.stderr}"
+                            )
+                            failed_services.append(container_name)
+                    else:
+                        logging.info(f"Container {container_name} is not running")
+
+                except subprocess.TimeoutExpired:
+                    logging.error(f"Timeout pausing service {service_name}")
+                    failed_services.append(service_name)
+                except Exception as e:
+                    logging.error(f"Error pausing service {service_name}: {e}")
+                    failed_services.append(service_name)
+
+            if failed_services:
+                return {
+                    "success": False,
+                    "error": f"Failed to pause services: {', '.join(failed_services)}",
+                    "paused": paused_services,
+                    "failed": failed_services,
+                }
+
+            return {
+                "success": True,
+                "message": f"Successfully paused {len(paused_services)} services",
+                "paused": paused_services,
+            }
+
+        except Exception as e:
+            logging.error(f"Error in pause_docker_services: {e}")
+            return {"success": False, "error": str(e)}
+
+    def unpause_docker_services(self, yaml_content: dict) -> dict:
+        """
+        Unpause Docker containers based on the service configuration.
+
+        Parameters
+        ----------
+        yaml_content : dict
+            The parsed YAML content containing service definitions
+
+        Returns
+        -------
+        dict
+            Result with success status and error information
+        """
+        try:
+            services = yaml_content.get("services", {})
+
+            if not services:
+                logging.warning("No services defined in YAML")
+                return {"success": True, "message": "No services to unpause"}
+
+            unpaused_services = []
+            failed_services = []
+
+            for service_name, service_config in services.items():
+                try:
+                    container_name = service_config.get("container_name", service_name)
+
+                    check_cmd = [
+                        "docker",
+                        "ps",
+                        "-a",
+                        "-q",
+                        "--filter",
+                        f"name={container_name}",
+                        "--filter",
+                        "status=paused",
+                    ]
+                    check_result = subprocess.run(
+                        check_cmd, capture_output=True, text=True, timeout=10
+                    )
+
+                    if check_result.returncode == 0 and check_result.stdout.strip():
+                        unpause_cmd = ["docker", "unpause", container_name]
+                        unpause_result = subprocess.run(
+                            unpause_cmd, capture_output=True, text=True, timeout=30
+                        )
+
+                        if unpause_result.returncode == 0:
+                            logging.info(f"Unpaused container: {container_name}")
+                            unpaused_services.append(container_name)
+                        else:
+                            logging.error(
+                                f"Failed to unpause container {container_name}: {unpause_result.stderr}"
+                            )
+                            failed_services.append(container_name)
+                    else:
+                        logging.info(f"Container {container_name} is not paused")
+
+                except subprocess.TimeoutExpired:
+                    logging.error(f"Timeout unpausing service {service_name}")
+                    failed_services.append(service_name)
+                except Exception as e:
+                    logging.error(f"Error unpausing service {service_name}: {e}")
+                    failed_services.append(service_name)
+
+            if failed_services:
+                return {
+                    "success": False,
+                    "error": f"Failed to unpause services: {', '.join(failed_services)}",
+                    "unpaused": unpaused_services,
+                    "failed": failed_services,
+                }
+
+            return {
+                "success": True,
+                "message": f"Successfully unpaused {len(unpaused_services)} services",
+                "unpaused": unpaused_services,
+            }
+
+        except Exception as e:
+            logging.error(f"Error in unpause_docker_services: {e}")
+            return {"success": False, "error": str(e)}
+
+    def restart_docker_services(self, yaml_content: dict) -> dict:
+        """
+        Restart Docker containers based on the service configuration.
+
+        Parameters
+        ----------
+        yaml_content : dict
+            The parsed YAML content containing service definitions
+
+        Returns
+        -------
+        dict
+            Result with success status and error information
+        """
+        try:
+            services = yaml_content.get("services", {})
+
+            if not services:
+                logging.warning("No services defined in YAML")
+                return {"success": True, "message": "No services to restart"}
+
+            restarted_services = []
+            failed_services = []
+
+            for service_name, service_config in services.items():
+                try:
+                    container_name = service_config.get("container_name", service_name)
+
+                    check_cmd = [
+                        "docker",
+                        "ps",
+                        "-a",
+                        "-q",
+                        "--filter",
+                        f"name={container_name}",
+                    ]
+                    check_result = subprocess.run(
+                        check_cmd, capture_output=True, text=True, timeout=10
+                    )
+
+                    if check_result.returncode == 0 and check_result.stdout.strip():
+                        restart_cmd = ["docker", "restart", container_name]
+                        restart_result = subprocess.run(
+                            restart_cmd, capture_output=True, text=True, timeout=60
+                        )
+
+                        if restart_result.returncode == 0:
+                            logging.info(f"Restarted container: {container_name}")
+                            restarted_services.append(container_name)
+                        else:
+                            logging.error(
+                                f"Failed to restart container {container_name}: {restart_result.stderr}"
+                            )
+                            failed_services.append(container_name)
+                    else:
+                        logging.info(f"Container {container_name} not found")
+
+                except subprocess.TimeoutExpired:
+                    logging.error(f"Timeout restarting service {service_name}")
+                    failed_services.append(service_name)
+                except Exception as e:
+                    logging.error(f"Error restarting service {service_name}: {e}")
+                    failed_services.append(service_name)
+
+            if failed_services:
+                return {
+                    "success": False,
+                    "error": f"Failed to restart services: {', '.join(failed_services)}",
+                    "restarted": restarted_services,
+                    "failed": failed_services,
+                }
+
+            return {
+                "success": True,
+                "message": f"Successfully restarted {len(restarted_services)} services",
+                "restarted": restarted_services,
+            }
+
+        except Exception as e:
+            logging.error(f"Error in restart_docker_services: {e}")
+            return {"success": False, "error": str(e)}
+
     def _send_progress_update(self, status: str, message: str, progress: int):
         """
         Send progress update through the progress reporter.

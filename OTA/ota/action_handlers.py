@@ -175,6 +175,156 @@ class ActionHandlers:
             logging.error(error_msg)
             self.progress_reporter.send_progress_update("error", error_msg, 10)
 
+    def handle_pause_action(self, data: dict, service_name: str = ""):
+        """
+        Handle pause action for OTA operations.
+
+        Parameters
+        ----------
+        data : dict
+            The parsed message data containing pause details
+        service_name : str
+            The name of the service to pause
+        """
+        logging.info(f"Pausing service: {service_name}")
+        self.progress_reporter.send_progress_update(
+            "pausing", f"Pausing service {service_name}", 10
+        )
+
+        try:
+            yaml_content = data.get("yaml_content")
+
+            if not yaml_content:
+                config_result = self.file_manager.load_latest_config(service_name)
+
+                if config_result.get("success"):
+                    yaml_content = config_result.get("yaml_content")
+                    logging.info(
+                        f"Loaded latest configuration from: {config_result.get('file_path')}"
+                    )
+                else:
+                    error_msg = f"No YAML content provided and no stored configuration found for service {service_name}"
+                    logging.error(error_msg)
+                    self.progress_reporter.send_progress_update("error", error_msg, 10)
+                    return
+
+            pause_result = self.docker_manager.pause_docker_services(yaml_content)  # type: ignore
+
+            if pause_result.get("success"):
+                logging.info(f"Successfully paused service: {service_name}")
+                self.progress_reporter.send_progress_update(
+                    "completed", f"Successfully paused service {service_name}", 100
+                )
+            else:
+                error_msg = f"Failed to pause service {service_name}: {pause_result.get('error', 'Unknown error')}"
+                logging.error(error_msg)
+                self.progress_reporter.send_progress_update("error", error_msg, 10)
+
+        except Exception as e:
+            error_msg = f"Error pausing service {service_name}: {e}"
+            logging.error(error_msg)
+            self.progress_reporter.send_progress_update("error", error_msg, 10)
+
+    def handle_unpause_action(self, data: dict, service_name: str = ""):
+        """
+        Handle unpause action for OTA operations.
+
+        Parameters
+        ----------
+        data : dict
+            The parsed message data containing unpause details
+        service_name : str
+            The name of the service to unpause
+        """
+        logging.info(f"Unpausing service: {service_name}")
+        self.progress_reporter.send_progress_update(
+            "unpausing", f"Unpausing service {service_name}", 10
+        )
+
+        try:
+            yaml_content = data.get("yaml_content")
+
+            if not yaml_content:
+                config_result = self.file_manager.load_latest_config(service_name)
+
+                if config_result.get("success"):
+                    yaml_content = config_result.get("yaml_content")
+                    logging.info(
+                        f"Loaded latest configuration from: {config_result.get('file_path')}"
+                    )
+                else:
+                    error_msg = f"No YAML content provided and no stored configuration found for service {service_name}"
+                    logging.error(error_msg)
+                    self.progress_reporter.send_progress_update("error", error_msg, 10)
+                    return
+
+            unpause_result = self.docker_manager.unpause_docker_services(yaml_content)  # type: ignore
+
+            if unpause_result.get("success"):
+                logging.info(f"Successfully unpaused service: {service_name}")
+                self.progress_reporter.send_progress_update(
+                    "completed", f"Successfully unpaused service {service_name}", 100
+                )
+            else:
+                error_msg = f"Failed to unpause service {service_name}: {unpause_result.get('error', 'Unknown error')}"
+                logging.error(error_msg)
+                self.progress_reporter.send_progress_update("error", error_msg, 10)
+
+        except Exception as e:
+            error_msg = f"Error unpausing service {service_name}: {e}"
+            logging.error(error_msg)
+            self.progress_reporter.send_progress_update("error", error_msg, 10)
+
+    def handle_restart_action(self, data: dict, service_name: str = ""):
+        """
+        Handle restart action for OTA operations.
+
+        Parameters
+        ----------
+        data : dict
+            The parsed message data containing restart details
+        service_name : str
+            The name of the service to restart
+        """
+        logging.info(f"Restarting service: {service_name}")
+        self.progress_reporter.send_progress_update(
+            "restarting", f"Restarting service {service_name}", 10
+        )
+
+        try:
+            yaml_content = data.get("yaml_content")
+
+            if not yaml_content:
+                config_result = self.file_manager.load_latest_config(service_name)
+
+                if config_result.get("success"):
+                    yaml_content = config_result.get("yaml_content")
+                    logging.info(
+                        f"Loaded latest configuration from: {config_result.get('file_path')}"
+                    )
+                else:
+                    error_msg = f"No YAML content provided and no stored configuration found for service {service_name}"
+                    logging.error(error_msg)
+                    self.progress_reporter.send_progress_update("error", error_msg, 10)
+                    return
+
+            restart_result = self.docker_manager.restart_docker_services(yaml_content)  # type: ignore
+
+            if restart_result.get("success"):
+                logging.info(f"Successfully restarted service: {service_name}")
+                self.progress_reporter.send_progress_update(
+                    "completed", f"Successfully restarted service {service_name}", 100
+                )
+            else:
+                error_msg = f"Failed to restart service {service_name}: {restart_result.get('error', 'Unknown error')}"
+                logging.error(error_msg)
+                self.progress_reporter.send_progress_update("error", error_msg, 50)
+
+        except Exception as e:
+            error_msg = f"Error restarting service {service_name}: {e}"
+            logging.error(error_msg)
+            self.progress_reporter.send_progress_update("error", error_msg, 10)
+
     def apply_ota_update(
         self,
         service_name: str,
