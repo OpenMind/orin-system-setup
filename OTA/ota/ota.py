@@ -100,8 +100,14 @@ class BaseOTA:
                     self.action_handlers.handle_stop_action(data, service_name)
                 elif action == "start":
                     self.action_handlers.handle_start_action(data, service_name)
+                elif action == "pause":
+                    self.action_handlers.handle_pause_action(data, service_name)
+                elif action == "unpause":
+                    self.action_handlers.handle_unpause_action(data, service_name)
+                elif action == "restart":
+                    self.action_handlers.handle_restart_action(data, service_name)
                 else:
-                    error_msg = f"Unknown action type: {action}. Supported actions: upgrade, stop, start"
+                    error_msg = f"Unknown action type: {action}. Supported actions: upgrade, stop, start, pause, unpause, restart"
                     logging.error(error_msg)
                     self.progress_reporter.send_progress_update("error", error_msg, 0)
 
